@@ -3,8 +3,11 @@ package cache
 import "time"
 
 type Cacher interface {
-	Get([]byte) ([]byte, error)
-	Set([]byte, []byte, time.Duration) error
-	Has([]byte) bool
-	Delete([]byte) error
+	Get(string) ([]byte, error)
+	Set(string, []byte, time.Duration) error
+	Has(string) bool
+	Delete(string) error
+	ResetCache() error
+	IsFull() bool
+	IsEmpty() bool
 }

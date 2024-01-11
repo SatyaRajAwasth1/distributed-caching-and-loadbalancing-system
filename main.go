@@ -1,35 +1,31 @@
 package main
 
 import (
-	"distributed-caching-and-loadbalancing-system/caching/cache"
-	"distributed-caching-and-loadbalancing-system/caching/server"
+	cache2 "distributed-caching-and-loadbalancing-system/caching/cache"
 	"fmt"
-	"log"
-	"net"
 	"time"
 )
 
 func main() {
 	fmt.Println("Its just a start of distributed cache and load balancing system")
 
-	serverOperations := server.Operations{
-		ListenAddress: ":8080",
-		IsLeader:      true,
-	}
+	cache := cache2.New()
 
-	go func() {
-		time.Sleep(time.Second * 2)
-		conn, err := net.Dial("tcp", ":8080")
-		if err != nil {
-			return
-		}
+	// Insert elements into the cache
+	cache.Set("key1", []byte("value1"), 500*time.Second)
+	cache.Set("key2", []byte("value2"), 500*time.Second)
 
-		_, _ = conn.Write([]byte("Hello, Server From Satya"))
-	}()
+	// Display the cache content
+	fmt.Println("Cache after insertion:")
+	//cache.queue.Display()
 
-	newServer := server.NewServer(serverOperations, cache.New())
-	err := newServer.Start()
-	if err != nil {
-		log.Printf("Error starting server: %s", err)
-	}
+	// Access an element to promote it
+	cache.Get("key1")
+
+	// Insert another element, causing eviction
+	cache.Set("key3", []byte("value3"), 5*time.Second)
+
+	// Display the updated cache content
+	fmt.Println("Cache after access and insertion (eviction may occur):")
+	//cache.queue.Display()
 }
