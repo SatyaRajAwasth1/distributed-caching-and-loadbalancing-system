@@ -39,7 +39,7 @@ func NewCache(aofFilePath string) *Cache {
 	// Open or create AOF file
 	aofFile, err := openOrCreateAOFFile(aofFilePath)
 	if err != nil {
-		fmt.Println("Error opening AOF file:", err)
+		fmt.Println(RedColor+"Error opening AOF file:", err, ResetColor)
 		return nil
 	}
 
@@ -47,10 +47,6 @@ func NewCache(aofFilePath string) *Cache {
 
 	// Replay AOF file
 	cache.ReplayAOF(aofFilePath)
-
-	// Start background AOF write goroutine
-	cache.aofWriteTicker = time.NewTicker(1 * time.Minute)
-	go cache.backgroundAOFWrite()
 
 	return cache
 }
@@ -61,9 +57,14 @@ func NewQueue() *Queue {
 }
 
 func (c *Cache) PrintCache() {
-	fmt.Println("\nCache Contents:")
+	fmt.Println()
+	fmt.Println("╔═════════════════════════════╗")
+	fmt.Println("║        Cache Contents       ║")
+	fmt.Println("╚═════════════════════════════╝")
+
+	// Print hash map entries
 	for key, node := range c.CacheMap {
-		fmt.Printf("Key: %s, Value: %s, Queue Position: ", key, node.data)
+		fmt.Printf("  %s │ Value: %s │ Queue Position: ", key, node.data)
 
 		// Find the position of the node in the queue
 		position := 1
@@ -78,13 +79,18 @@ func (c *Cache) PrintCache() {
 
 		fmt.Println(position)
 	}
-	fmt.Println("Queue Order:")
+
+	fmt.Println("╔═════════════════════════════╗")
+	fmt.Println("║        Queue Order          ║")
+	fmt.Println("╚═════════════════════════════╝")
+
+	// Print linked list (queue) entries
 	currentNode := c.Queue.head
 	for currentNode != nil {
-		fmt.Printf("%s -> ", currentNode.data)
+		fmt.Printf("  %s -> ", currentNode.data)
 		currentNode = currentNode.next
 	}
-	fmt.Println("nil")
+	fmt.Println("nil\n╚═════════════════════════════╝")
 }
 
 // AddToFront adds a new node to the front of the Queue.
@@ -161,10 +167,10 @@ func (q *Queue) RemoveFromEnd() *Node {
 }
 
 func (c *Cache) Get(key string) ([]byte, error) {
-	println("Getting Cache for Key: ", key)
+	println(GreenColor+"Getting Cache for Key: ", key, ResetColor)
 	node, exists := c.CacheMap[key]
 	if !exists {
-		fmt.Println("Key: ", key, " not found.")
+		fmt.Println(RedColor+"Key: ", key, " not found."+ResetColor)
 		return nil, errors.New("key not found")
 	}
 
@@ -175,7 +181,7 @@ func (c *Cache) Get(key string) ([]byte, error) {
 }
 
 func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
-	println("Setting cache> Key: ", key, " Value: ", string(value))
+	println(GreenColor+"Setting cache> Key: ", key, " Value: ", string(value), ResetColor)
 	node, exists := c.CacheMap[key]
 	if exists {
 		// Update existing node
@@ -200,7 +206,7 @@ func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
 		<-time.After(duration)
 		err := c.Delete(key)
 		if err != nil {
-			println("Error evicting cache with key: ", key)
+			println(RedColor+"Error evicting cache with key: ", key, GreenColor)
 			return
 		}
 	}()
