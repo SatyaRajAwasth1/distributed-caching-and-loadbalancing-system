@@ -16,16 +16,15 @@ func openOrCreateAOFFile(aofFilePath string) (*os.File, error) {
 }
 
 func (c *Cache) ReplayAOF(aofFilePath string) {
-	log.Printf("Start replaying AOF commands")
 	file, err := os.Open(aofFilePath)
 	if err != nil {
-		fmt.Println("Error opening AOF file for replay:", err)
+		fmt.Println(RedColor+"Error opening AOF file for replay:", err, ResetColor)
 		return
 	}
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			log.Println("Error closing AOF file.")
+			log.Println(RedColor + "Error closing AOF file." + ResetColor)
 		}
 	}(file)
 
