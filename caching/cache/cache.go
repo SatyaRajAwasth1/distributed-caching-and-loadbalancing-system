@@ -112,17 +112,7 @@ func (q *Queue) MoveToFront(node *Node) {
 	}
 
 	// Remove the node from its current position
-	if nodePrev := node.prev; nodePrev != nil {
-		nodePrev.next = node.next
-	} else {
-		q.head = node.next
-	}
-
-	if nodeNext := node.next; nodeNext != nil {
-		nodeNext.prev = node.prev
-	} else {
-		q.tail = node.prev
-	}
+	q.RemoveNode(node)
 
 	// Add the node to the front
 	q.AddToFront(node)

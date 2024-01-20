@@ -17,13 +17,13 @@ func openOrCreateAOFFile(aofFilePath string) (*os.File, error) {
 func (c *Cache) ReplayAOF(aofFilePath string) {
 	file, err := os.Open(aofFilePath)
 	if err != nil {
-		fmt.Println("Error opening AOF file for replay:", err)
+		fmt.Println(RedColor+"Error opening AOF file for replay:", err, ResetColor)
 		return
 	}
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			log.Println("Error closing AOF file.")
+			log.Println(RedColor + "Error closing AOF file." + ResetColor)
 		}
 	}(file)
 
@@ -47,7 +47,7 @@ func (c *Cache) ReplayAOF(aofFilePath string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading AOF file:", err)
+		fmt.Println(RedColor+"Error reading AOF file:", err, ResetColor)
 	}
 
 	// Start background AOF write goroutine
@@ -59,9 +59,7 @@ func (c *Cache) backgroundAOFWrite() {
 	for {
 		select {
 		case <-c.aofWriteTicker.C:
-			c.aofMutex.Lock()
 			c.writeToAOFInBackground()
-			c.aofMutex.Unlock()
 		}
 	}
 }
