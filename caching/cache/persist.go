@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,6 +16,7 @@ func openOrCreateAOFFile(aofFilePath string) (*os.File, error) {
 }
 
 func (c *Cache) ReplayAOF(aofFilePath string) {
+	log.Printf("Start replaying AOF commands")
 	file, err := os.Open(aofFilePath)
 	if err != nil {
 		fmt.Println("Error opening AOF file for replay:", err)
@@ -33,62 +35,38 @@ func (c *Cache) ReplayAOF(aofFilePath string) {
 		fields := strings.Fields(line)
 		if len(fields) > 1 {
 			command := fields[0]
-			key := fields[1]
-			value := []byte(fields[2])
 
 			// Replay the command to reconstruct the cache
 			switch command {
 			case "SET":
-				_ = c.Set(key, value, 0) // Duration is 0 for no eviction
+				key := fields[1]
+				value := []byte(fields[2])
+				ttl, _ := strconv.Atoi(fields[3])
+				_ = c.Set(key, value, time.Duration(ttl)) // Duration is 0 for no eviction
 			case "DELETE":
+				key := fields[1]
 				_ = c.Delete(key)
+			case "FLUSHALL":
+				_ = c.ResetCache()
+
 			}
 		}
+		log.Printf("Replay of AOF end")
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading AOF file:", err)
+		fmt.Println(RedColor+"Error reading AOF file:", err, ResetColor)
 	}
 
-	// Start background AOF write goroutine
-	c.aofWriteTicker = time.NewTicker(1 * time.Minute)
-	go c.backgroundAOFWrite()
 }
 
-func (c *Cache) backgroundAOFWrite() {
-	for {
-		select {
-		case <-c.aofWriteTicker.C:
-			c.aofMutex.Lock()
-			c.writeToAOFInBackground()
-			c.aofMutex.Unlock()
-		}
-	}
-}
-
-func (c *Cache) writeToAOFInBackground() {
-	if c.aofFile == nil {
-		return
-	}
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	// Perform AOF write operations based on the cache contents
-	for key, node := range c.CacheMap {
-		value := node.data.([]byte)
-		// Customize the AOF write operation based on your needs
-		c.writeToAOF("SET", key, value)
-	}
-}
-
-func (c *Cache) writeToAOF(command string, key string, value []byte) {
+func (c *Cache) writeToAOF(command string, key string, value []byte, ttl time.Duration) {
 	if c.aofFile == nil {
 		return
 	}
 
 	// Format the command and write to the AOF file
-	cmd := fmt.Sprintf("%s %s %s\n", command, key, value)
+	cmd := fmt.Sprintf("%s %s %s %s\n", command, key, value, ttl)
 	_, err := c.aofFile.WriteString(cmd)
 	if err != nil {
 		fmt.Println("Error writing to AOF file:", err)
@@ -103,12 +81,4 @@ func (c *Cache) CloseAOF() {
 			return
 		}
 	}
-}
-
-func (c *Cache) ClosePersist() {
-	// Stop AOF write goroutine
-	c.aofWriteTicker.Stop()
-
-	// Close AOF file
-	c.CloseAOF()
 }
