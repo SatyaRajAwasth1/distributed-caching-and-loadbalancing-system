@@ -43,7 +43,7 @@ func HandleCli() {
 	// Create a new cache
 	aofFilePathPtr := "aof.log"
 	cacheInstance := NewCache(aofFilePathPtr)
-	defer cacheInstance.ClosePersist()
+	defer cacheInstance.CloseAOF()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {

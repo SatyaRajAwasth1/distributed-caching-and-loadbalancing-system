@@ -9,12 +9,12 @@ import (
 )
 
 type Cache struct {
-	CacheMap       map[string]*Node
-	Queue          *Queue
-	mutex          sync.Mutex
-	aofFile        *os.File
-	aofWriteTicker *time.Ticker
-	aofMutex       sync.Mutex
+	CacheMap     map[string]*Node
+	Queue        *Queue
+	mutex        sync.Mutex
+	aofFile      *os.File
+	aofMutex     sync.Mutex
+	replayingAOF bool
 }
 
 type Queue struct {
@@ -46,8 +46,9 @@ func NewCache(aofFilePath string) *Cache {
 	cache.aofFile = aofFile
 
 	// Replay AOF file
+	cache.replayingAOF = true
 	cache.ReplayAOF(aofFilePath)
-
+	cache.replayingAOF = false
 	return cache
 }
 
@@ -173,12 +174,11 @@ func (c *Cache) Get(key string) ([]byte, error) {
 func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
 	println(GreenColor+"Setting cache> Key: ", key, " Value: ", string(value), ResetColor)
 	node, exists := c.CacheMap[key]
+	c.mutex.Lock()
 	if exists {
 		// Update existing node
-		c.mutex.Lock()
 		node.data = value
 		c.Queue.MoveToFront(node)
-		c.mutex.Unlock()
 	} else {
 		// Add new node
 		newNode := &Node{
@@ -186,23 +186,22 @@ func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
 			next: c.Queue.head,
 			prev: nil,
 		}
-		c.mutex.Lock()
 		c.CacheMap[key] = newNode
 		c.Queue.AddToFront(newNode)
-		c.mutex.Unlock()
+		if !c.replayingAOF {
+			c.writeToAOF("SET", key, value, duration)
+		}
 	}
+	c.mutex.Unlock()
 
 	go func() {
 		<-time.After(duration)
 		err := c.Delete(key)
 		if err != nil {
-			println(RedColor+"Error evicting cache with key: ", key, GreenColor)
+			println("\n"+RedColor+"Error evicting cache with key: ", key, ResetColor)
 			return
 		}
 	}()
-
-	// Write to AOF file
-	c.writeToAOF("SET", key, value)
 
 	return nil
 }
@@ -224,8 +223,7 @@ func (c *Cache) Delete(key string) error {
 	c.Queue.RemoveNode(node)
 	delete(c.CacheMap, key)
 
-	// Write to AOF file
-	c.writeToAOF("DELETE", key, nil)
+	c.writeToAOF("DELETE", key, nil, 0)
 
 	return nil
 }
@@ -234,6 +232,8 @@ func (c *Cache) Delete(key string) error {
 func (c *Cache) ResetCache() error {
 	c.CacheMap = make(map[string]*Node)
 	c.Queue = NewQueue()
+
+	c.writeToAOF("FLUSHALL", "", nil, 0)
 	return nil
 }
 
