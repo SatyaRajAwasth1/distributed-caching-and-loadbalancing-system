@@ -41,7 +41,8 @@ func (c *Cache) ReplayAOF(aofFilePath string) {
 				key := fields[1]
 				value := []byte(fields[2])
 				ttl, _ := strconv.Atoi(fields[3])
-				_ = c.Set(key, value, time.Duration(ttl)) // Duration is 0 for no eviction
+				duration := time.Duration(ttl/1000) * time.Second
+				_ = c.Set(key, value, duration)
 			case "DELETE":
 				key := fields[1]
 				_ = c.Delete(key)
@@ -65,7 +66,10 @@ func (c *Cache) writeToAOF(command string, key string, value []byte, ttl time.Du
 	}
 
 	// Format the command and write to the AOF file
-	cmd := fmt.Sprintf("%s %s %s %s\n", command, key, value, ttl)
+	var cmd = fmt.Sprintf("%s %s %s \n", command, key, value)
+	if ttl != 0 {
+		cmd = fmt.Sprintf("%s %s %s %d\n", command, key, value, ttl.Milliseconds())
+	}
 	_, err := c.aofFile.WriteString(cmd)
 	if err != nil {
 		fmt.Println("Error writing to AOF file:", err)

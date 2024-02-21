@@ -25,6 +25,9 @@ const (
 	CMDGet      Command = "GET"
 	CMDDel      Command = "DEL"
 	CMDFlushAll Command = "FLUSHALL"
+	CMDShowAll  Command = "SHOWALL"
+	CMDExit     Command = "EXIT"
+	CMDHelp     Command = "HELP"
 )
 
 // MessageSet represents a SET command message
@@ -40,8 +43,8 @@ type MessageGet struct {
 }
 
 func HandleCli() {
+	aofFilePathPtr := "tmp/aof.log"
 	// Create a new cache
-	aofFilePathPtr := "aof.log"
 	cacheInstance := NewCache(aofFilePathPtr)
 	defer cacheInstance.CloseAOF()
 
@@ -73,11 +76,14 @@ func HandleCli() {
 			handleFlushAllCommand(cacheInstance)
 			cacheInstance.PrintCache()
 
-		case "EXIT":
+		case string(CMDShowAll):
+			cacheInstance.PrintCache()
+
+		case string(CMDExit):
 			fmt.Println("Exiting the application.")
 			os.Exit(0)
 
-		case "HELP":
+		case string(CMDHelp):
 			displayCommandGuide()
 
 		default:
