@@ -1,5 +1,0 @@
-cache:
-  server:
-    noOfReplicas: 4
-    maxCacheSize: 2048
-    defaultTtl: 86400
