@@ -1,4 +1,0 @@
-SET key1 value1 100000
-SET key2 value2 20000
-DELETE key2
-DELETE key1
