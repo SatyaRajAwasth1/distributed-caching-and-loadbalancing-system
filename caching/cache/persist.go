@@ -16,19 +16,22 @@ func openOrCreateAOFFile(aofFilePath string) (*os.File, error) {
 }
 
 func (c *Cache) ReplayAOF(aofFilePath string) {
-	file, err := os.Open(aofFilePath)
+	c.replayingAOF = true
+	aofFile, err := openOrCreateAOFFile(aofFilePath)
 	if err != nil {
 		fmt.Println(RedColor+"Error opening AOF file for replay:", err, ResetColor)
 		return
 	}
+	c.aofFile = aofFile
+
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
 			log.Println(RedColor + "Error closing AOF file." + ResetColor)
 		}
-	}(file)
+	}(aofFile)
 
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(aofFile)
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
@@ -37,23 +40,23 @@ func (c *Cache) ReplayAOF(aofFilePath string) {
 
 			// Replay the command to reconstruct the cache
 			switch command {
-			case "SET":
+			case string(CMDSet):
 				key := fields[1]
 				value := []byte(fields[2])
 				ttl, _ := strconv.Atoi(fields[3])
 				duration := time.Duration(ttl/1000) * time.Second
 				_ = c.Set(key, value, duration)
-			case "DELETE":
+			case string(CMDDel):
 				key := fields[1]
 				_ = c.Delete(key)
-			case "FLUSHALL":
+			case string(CMDFlushAll):
 				_ = c.ResetCache()
 
 			}
 		}
 		log.Printf("Replay of AOF end")
 	}
-
+	c.replayingAOF = false
 	if err := scanner.Err(); err != nil {
 		fmt.Println(RedColor+"Error reading AOF file:", err, ResetColor)
 	}
@@ -62,6 +65,7 @@ func (c *Cache) ReplayAOF(aofFilePath string) {
 
 func (c *Cache) writeToAOF(command string, key string, value []byte, ttl time.Duration) {
 	if c.aofFile == nil {
+		log.Printf("Error! No AOF file.")
 		return
 	}
 

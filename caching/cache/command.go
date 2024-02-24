@@ -33,7 +33,7 @@ const (
 // MessageSet represents a SET command message
 type MessageSet struct {
 	Key   string
-	Value string
+	Value []byte
 	TTL   time.Duration
 }
 
@@ -43,9 +43,8 @@ type MessageGet struct {
 }
 
 func HandleCli() {
-	aofFilePathPtr := "tmp/aof.log"
 	// Create a new cache
-	cacheInstance := NewCache(aofFilePathPtr)
+	cacheInstance := NewCache()
 	defer cacheInstance.CloseAOF()
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -99,7 +98,7 @@ func handleSetCommand(c *Cache, args []string) {
 	}
 
 	key := args[0]
-	value := args[1]
+	value := []byte(args[1])
 	ttl, err := strconv.Atoi(args[2])
 	if err != nil {
 		fmt.Println(RedColor + "Error: Time to Live (TTL) must be a numeric value." + ResetColor)
@@ -161,7 +160,7 @@ func displayCommandGuide() {
 	fmt.Println()
 }
 
-func setCache(c *Cache, key string, value string, duration time.Duration) {
+func setCache(c *Cache, key string, value []byte, duration time.Duration) {
 	if key == "" || duration == 0 {
 		fmt.Println(RedColor + "Error: Key, value, and duration are required for 'SET' command." + ResetColor)
 		os.Exit(1)

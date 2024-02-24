@@ -29,27 +29,12 @@ type Node struct {
 }
 
 // NewCache creates a new Cache with an empty map and Queue.
-func NewCache(aofFilePath string) *Cache {
-	cache := &Cache{
+func NewCache() *Cache {
+	return &Cache{
 		CacheMap: make(map[string]*Node),
 		Queue:    NewQueue(),
 		mutex:    sync.Mutex{},
 	}
-
-	// Open or create AOF file
-	aofFile, err := openOrCreateAOFFile(aofFilePath)
-	if err != nil {
-		fmt.Println(RedColor+"Error opening AOF file:", err, ResetColor)
-		return nil
-	}
-
-	cache.aofFile = aofFile
-
-	// Replay AOF file
-	cache.replayingAOF = true
-	cache.ReplayAOF(aofFilePath)
-	cache.replayingAOF = false
-	return cache
 }
 
 // NewQueue creates a new Queue with empty head and tail.

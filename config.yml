@@ -1,5 +1,9 @@
 cache:
-  server:
-    noOfReplicas: 4
-    maxCacheSize: 2048
-    defaultTtl: 86400
+  master:
+    address: 127.0.0.1
+    port: 8080
+
+  aof: tmp/aof.log
+  noOfReplicas: 4
+  maxCacheSize: 2048
+  defaultTtl: 86400
