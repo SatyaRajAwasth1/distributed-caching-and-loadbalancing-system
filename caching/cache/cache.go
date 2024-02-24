@@ -230,3 +230,34 @@ func (c *Cache) IsFull() bool {
 func (c *Cache) IsEmpty() bool {
 	return len(c.CacheMap) == 0
 }
+
+// GetCacheData returns the current cache data as a map.
+func (c *Cache) GetCacheData() map[string][]byte {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	cacheData := make(map[string][]byte)
+	for key, node := range c.CacheMap {
+		cacheData[key] = node.data.([]byte)
+	}
+	return cacheData
+}
+
+// SetCacheData sets the cache data using the provided map.
+func (c *Cache) SetCacheData(cacheData map[string][]byte) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.CacheMap = make(map[string]*Node)
+	c.Queue = NewQueue()
+
+	for key, value := range cacheData {
+		newNode := &Node{
+			data: value,
+			next: c.Queue.head,
+			prev: nil,
+		}
+		c.CacheMap[key] = newNode
+		c.Queue.AddToFront(newNode)
+	}
+}

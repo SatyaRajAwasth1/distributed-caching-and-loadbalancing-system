@@ -16,6 +16,7 @@ func RunAsSlave(port string) {
 		return
 	}
 
+	// Connect to master
 	conn, err := net.Dial("tcp", masterAddr+":"+masterPort)
 	if err != nil {
 		fmt.Println("Error connecting to master:", err)
@@ -40,7 +41,18 @@ func RunAsSlave(port string) {
 		return
 	}
 
-	cache.HandleCli()
+	// Receive cache data from master
+	var cacheData map[string][]byte
+	decoder := json.NewDecoder(conn)
+	err = decoder.Decode(&cacheData)
+	if err != nil {
+		fmt.Println("Error receiving cache data from master:", err)
+		return
+	}
+
+	// Initialize local cache with received data
+	cacheInstance := cache.NewCache()
+	cacheInstance.SetCacheData(cacheData)
 }
 
 func generateUniqueId() int {

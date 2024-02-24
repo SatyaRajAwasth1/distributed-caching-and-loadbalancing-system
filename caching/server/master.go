@@ -7,6 +7,7 @@ import (
 	"net"
 )
 
+// RunAsMaster starts the master node.
 func RunAsMaster(port string) {
 	ln, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -16,8 +17,9 @@ func RunAsMaster(port string) {
 	defer ln.Close()
 
 	fmt.Println("Running as master on port", port)
-	aofUrl, _ := getAofFileLocation("config.yaml")
+	aofUrl := "tmp/aof.log" //getAofFileLocation("config.yaml")
 	cacheInstance := cache.NewCache()
+	fmt.Println("AOF URL:", aofUrl)
 	cacheInstance.ReplayAOF(aofUrl)
 
 	for {
@@ -27,11 +29,12 @@ func RunAsMaster(port string) {
 			continue
 		}
 
-		go handleSlaveConnection(conn)
+		go handleSlaveConnection(conn, cacheInstance)
 	}
 }
 
-func handleSlaveConnection(conn net.Conn) {
+// handleSlaveConnection handles connections from slave nodes.
+func handleSlaveConnection(conn net.Conn, cacheInstance *cache.Cache) {
 	defer conn.Close()
 
 	// Read slave information from the connection
@@ -44,4 +47,13 @@ func handleSlaveConnection(conn net.Conn) {
 	}
 
 	fmt.Println("Slave connected:", slaveInfo)
+
+	// Send cache data to the slave for replication
+	cacheData := cacheInstance.GetCacheData()
+	encoder := json.NewEncoder(conn)
+	err = encoder.Encode(cacheData)
+	if err != nil {
+		fmt.Println("Error sending cache data to slave:", err)
+		return
+	}
 }

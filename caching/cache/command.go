@@ -45,7 +45,6 @@ type MessageGet struct {
 func HandleCli() {
 	// Create a new cache
 	cacheInstance := NewCache()
-	defer cacheInstance.CloseAOF()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -187,7 +186,6 @@ func getCache(c *Cache, key string) {
 func deleteCache(c *Cache, key string) {
 	if key == "" {
 		fmt.Println(RedColor + "Error: Key is required for 'DEL' command." + ResetColor)
-		os.Exit(1)
 	}
 	err := c.Delete(key)
 	if err != nil {

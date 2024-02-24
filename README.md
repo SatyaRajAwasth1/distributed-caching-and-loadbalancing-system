@@ -11,10 +11,17 @@ distributed-caching-and-loadbalancing-system/
 |   |   |-- command.go        // Command processing logic
 |   |   |-- persist.go        // AOF persistence logic
 |   |-- replication.go       // Replication logic
-|-- server/
+|   |-- server/
+|   |   |-- config.go 
+|   |   |-- master.go 
+|   |   |-- slave.go 
+|   |   |-- server-node.go 
 |   |-- master.go            // Master server implementation
 |   |-- slave.go             // Slave server implementation
+|-- loadbalancer/
+|   |-- loadbalancer.go  
 |-- tmp/                     // Temporary files
+|   |-- aof.log
 |-- config.yml               // Configuration file
 |-- main.go                  // Main application logic
 

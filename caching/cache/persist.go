@@ -17,7 +17,7 @@ func openOrCreateAOFFile(aofFilePath string) (*os.File, error) {
 
 func (c *Cache) ReplayAOF(aofFilePath string) {
 	c.replayingAOF = true
-	aofFile, err := openOrCreateAOFFile(aofFilePath)
+	aofFile, err := os.Open(aofFilePath)
 	if err != nil {
 		fmt.Println(RedColor+"Error opening AOF file for replay:", err, ResetColor)
 		return
