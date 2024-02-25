@@ -2,82 +2,104 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	"bytes"
+	"gopkg.in/yaml.v2"
+	"io"
+	"log"
 	"net"
+	"net/http"
+	"os"
 	"strings"
 	"sync"
 )
 
 var (
-	masterNode = "127.0.0.1:8080" // Address of the master node
-	slaveNodes = []string{
-		"127.0.0.1:9090", // Address of slave node 1
-		"127.0.0.1:9091", // Address of slave node 2
-		"127.0.0.1:9092", // Address of slave node 3
-		// Add more slave nodes as needed
-	}
-	slaveIndex = 0 // Index to keep track of the last used slave node
-	slaveMutex sync.Mutex
+	masterNode  string   // Address of the master node
+	slaveNodes  []string // Addresses of slave nodes
+	slaveIndex  = 0      // Index to keep track of the last used slave node
+	slaveMutex  sync.Mutex
+	configMutex sync.Mutex
 )
 
+// Config struct to hold master and slave configurations
+type Config struct {
+	Cache struct {
+		Master struct {
+			Address string `yaml:"address"`
+			Port    string `yaml:"port"`
+		} `yaml:"master"`
+		Slaves     []string `yaml:"slaves"`
+		AofFileUrl string   `yaml:"aof"`
+	} `yaml:"cache"`
+}
+
 func main() {
+	// Read configuration from YAML file
+	config, err := readConfig("config.yml")
+	if err != nil {
+		log.Println("Error reading config file:", err)
+		return
+	}
+
+	masterNode = "127.0.0.1:8081" //config.Cache.Master.Address + ":" + config.Cache.Master.Port not using since thats the tcp listening to slaves
+	slaveNodes = config.Cache.Slaves
+
 	// Start load balancer
 	ln, err := net.Listen("tcp", ":8888")
 	if err != nil {
-		fmt.Println("Error starting load balancer:", err)
+		log.Println("Error starting load balancer:", err)
 		return
 	}
 	defer ln.Close()
-	fmt.Println("Load balancer started on port 8888")
+	log.Println("Load balancer started on port 8888")
 
-	// Accept incoming connections
+	// Handle incoming requests
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			log.Println("Error accepting connection:", err)
 			continue
 		}
-		go handleConnection(conn)
+		go handleRequest(conn)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleRequest(conn net.Conn) {
 	defer conn.Close()
 
-	// Read command from client
-	reader := bufio.NewReader(conn)
-	command, err := reader.ReadString('\n')
+	// Read HTTP request
+	request, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
-		fmt.Println("Error reading command:", err)
+		log.Println("Error reading HTTP request:", err)
 		return
 	}
 
-	// Process command
-	response := processCommand(command)
+	// Log the request details
+	log.Printf("Received %s request for %s", request.Method, request.URL.Path)
 
-	// Send response to client
-	conn.Write([]byte(response + "\n"))
+	// Route request to appropriate node
+	nodeAddr := routeRequest(request)
+
+	// Forward request to node
+	forwardRequest(conn, nodeAddr, request)
+
+	// Log the completion of handling the request
+	log.Println("Request handling completed")
 }
 
-func processCommand(command string) string {
-	// Parse command
-	parts := strings.Fields(command)
-	if len(parts) < 1 {
-		return "Invalid command"
-	}
-	cmd := strings.ToUpper(parts[0])
+func routeRequest(req *http.Request) string {
+	// Extract request path
+	path := req.URL.Path
 
-	// Route command based on command type
-	switch cmd {
-	case "SET", "DEL", "FLUSHALL":
-		return "Write operation routed to master node"
-	case "GET":
-		// Round-robin load balancing for GET commands
-		slaveAddr := getNextSlave()
-		return fmt.Sprintf("Read operation routed to slave node: %s", slaveAddr)
-	default:
-		return "Invalid command"
+	// Route based on request path
+	if strings.HasPrefix(path, "/server/info") || req.Method == http.MethodPost {
+		// GET request for server info or POST request, route to master node
+		return masterNode
 	}
+
+	// Round-robin load balancing for other requests
+	slaveAddr := getNextSlave()
+	return slaveAddr
 }
 
 func getNextSlave() string {
@@ -86,4 +108,85 @@ func getNextSlave() string {
 	addr := slaveNodes[slaveIndex]
 	slaveIndex = (slaveIndex + 1) % len(slaveNodes)
 	return addr
+}
+
+func forwardRequest(conn net.Conn, nodeAddr string, req *http.Request) {
+	// Connect to node
+	nodeConn, err := net.Dial("tcp", nodeAddr)
+	if err != nil {
+		log.Println("Error connecting to node:", err)
+		return
+	}
+	defer nodeConn.Close()
+
+	// Log the request forwarding details
+	parts := strings.Split(nodeAddr, ":")
+	serverIP := parts[0]
+	serverPort := parts[1]
+	log.Printf("Forwarding request to server %s:%s\n", serverIP, serverPort)
+
+	// Forward request to node
+	err = sendRequest(nodeConn, req)
+	if err != nil {
+		log.Println("Error forwarding request to node:", err)
+		return
+	}
+
+	// Forward response from node to client
+	err = forwardResponse(conn, nodeConn)
+	if err != nil {
+		log.Println("Error forwarding response from node to client:", err)
+		return
+	}
+}
+
+func sendRequest(serverConn net.Conn, req *http.Request) error {
+	// Write request to server connection
+	err := req.Write(serverConn)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func forwardResponse(clientConn net.Conn, serverConn net.Conn) error {
+	// Read response from server
+	resp, err := http.ReadResponse(bufio.NewReader(serverConn), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Write response to client connection
+	var buf bytes.Buffer
+	resp.Write(&buf)
+	_, err = io.Copy(clientConn, &buf)
+	if err != nil {
+		return err
+	}
+
+	// Log the response details
+	log.Println("Response forwarded to client")
+
+	return nil
+}
+
+func readConfig(filename string) (*Config, error) {
+	// Lock to prevent concurrent access while reading configuration
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	// Read YAML file
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse YAML data into Config struct
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }

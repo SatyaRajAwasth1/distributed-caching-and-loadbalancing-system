@@ -147,6 +147,9 @@ func handleSetCache(cacheInstance *cache.Cache) http.HandlerFunc {
 			}
 		}
 
+		// Update cache on connected slave nodes
+		updateCacheOnSlaves(cacheInstance)
+
 		// Respond with success message
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "Cache set successful\n")
@@ -177,9 +180,23 @@ func handleDeleteCache(cacheInstance *cache.Cache) http.HandlerFunc {
 			return
 		}
 
+		// Update cache on connected slave nodes
+		updateCacheOnSlaves(cacheInstance)
+
 		// Respond with success message
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "Cache delete successful\n")
+	}
+}
+
+// updateCacheOnSlaves updates the cache on connected slave nodes.
+func updateCacheOnSlaves(cacheInstance *cache.Cache) {
+	for _, conn := range slaveConnections {
+		err := sendCacheDataToSlave(conn, cacheInstance)
+		if err != nil {
+			log.Println("Error updating cache on slave:", err)
+			// Handle error as needed
+		}
 	}
 }
 

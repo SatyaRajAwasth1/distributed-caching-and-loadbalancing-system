@@ -14,7 +14,7 @@ func RunAsSlave(port string) {
 	// Read configuration file
 	masterAddr, masterPort, err := readMasterNodeConfigs("config.yml")
 	if err != nil {
-		fmt.Println("Error reading config file:", err)
+		log.Println("Error reading config file:", err)
 		return
 	}
 
@@ -22,13 +22,13 @@ func RunAsSlave(port string) {
 	for {
 		conn, err := net.Dial("tcp", masterAddr+":"+masterPort)
 		if err != nil {
-			fmt.Println("Error connecting to master:", err)
+			log.Println("Error connecting to master:", err)
 			time.Sleep(5 * time.Second) // Retry after 5 seconds
 			continue
 		}
 		defer conn.Close()
 
-		fmt.Println("Connected to master at", masterAddr+":"+masterPort)
+		log.Println("Connected to master at", masterAddr+":"+masterPort)
 
 		// Prepare slave information
 		slaveInfo := NodeInfo{
@@ -41,7 +41,7 @@ func RunAsSlave(port string) {
 		encoder := json.NewEncoder(conn)
 		err = encoder.Encode(slaveInfo)
 		if err != nil {
-			fmt.Println("Error sending slave information to master:", err)
+			log.Println("Error sending slave information to master:", err)
 			return
 		}
 
@@ -51,7 +51,7 @@ func RunAsSlave(port string) {
 		println("Response: ", decoder)
 		err = decoder.Decode(&cacheData)
 		if err != nil {
-			fmt.Println("Error receiving cache data from master:", err)
+			log.Println("Error receiving cache data from master:", err)
 		}
 
 		// Initialize local cache with received data
@@ -73,6 +73,9 @@ func RunAsSlave(port string) {
 // handleGetCache handles the cache get operation on the slave node.
 func handleGetCache(cacheInstance *cache.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Received GET request for cache")
+		defer log.Println("GET request processed")
+
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -93,6 +96,7 @@ func handleGetCache(cacheInstance *cache.Cache) http.HandlerFunc {
 			return
 		}
 
+		println("Response Received: ", string(value))
 		// Respond with cache value
 		w.WriteHeader(http.StatusOK)
 		w.Write(value)
@@ -102,6 +106,9 @@ func handleGetCache(cacheInstance *cache.Cache) http.HandlerFunc {
 // handleGetAllCacheData handles the request for retrieving all cache data (map and queue info).
 func handleGetAllCacheData(cacheInstance *cache.Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Received GET request for all cache data")
+		defer log.Println("GET request for all cache data processed")
+
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

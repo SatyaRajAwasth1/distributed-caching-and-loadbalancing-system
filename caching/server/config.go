@@ -11,7 +11,8 @@ type Config struct {
 			Address string `yaml:"address"`
 			Port    string `yaml:"port"`
 		} `yaml:"master"`
-		AofFileUrl string `yaml:"aof"`
+		Slaves     []string `yaml:"slaves"`
+		AofFileUrl string   `yaml:"aof"`
 	} `yaml:"cache"`
 }
 

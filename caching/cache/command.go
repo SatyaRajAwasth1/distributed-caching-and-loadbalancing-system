@@ -2,7 +2,9 @@ package cache
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -43,8 +45,8 @@ type MessageGet struct {
 }
 
 func HandleCli() {
-	// Create a new cache
-	cacheInstance := NewCache()
+
+	printASCIIArt()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -60,22 +62,19 @@ func HandleCli() {
 
 		switch strings.ToUpper(parts[0]) {
 		case string(CMDSet):
-			handleSetCommand(cacheInstance, parts[1:])
-			cacheInstance.PrintCache()
+			handleSetCommand(parts[1:])
 
 		case string(CMDGet):
-			handleGetCommand(cacheInstance, parts[1:])
+			handleGetCommand(parts[1:])
 
 		case string(CMDDel):
-			handleDeleteCommand(cacheInstance, parts[1:])
-			cacheInstance.PrintCache()
+			handleDeleteCommand(parts[1:])
 
 		case string(CMDFlushAll):
-			handleFlushAllCommand(cacheInstance)
-			cacheInstance.PrintCache()
+			handleFlushAllCommand()
 
 		case string(CMDShowAll):
-			cacheInstance.PrintCache()
+			handleShowAllCommand()
 
 		case string(CMDExit):
 			fmt.Println("Exiting the application.")
@@ -90,30 +89,55 @@ func HandleCli() {
 	}
 }
 
-func handleSetCommand(c *Cache, args []string) {
+func printASCIIArt() {
+	// Read contents of banner.txt
+	banner, err := os.ReadFile("banner.txt")
+	if err != nil {
+		fmt.Println("Error reading banner.txt:", err)
+		os.Exit(1)
+	}
+
+	// Print ASCII art
+	fmt.Println(string(banner))
+}
+
+func handleSetCommand(args []string) {
 	if len(args) != 3 {
 		fmt.Println(RedColor + "Error: Invalid SET command. Usage: SET <key> <value> <TTL>" + ResetColor)
 		return
 	}
 
 	key := args[0]
-	value := []byte(args[1])
-	ttl, err := strconv.Atoi(args[2])
-	if err != nil {
-		fmt.Println(RedColor + "Error: Time to Live (TTL) must be a numeric value." + ResetColor)
-		return
-	}
+	value := args[1]
+	ttl := args[2]
 
 	message := MessageSet{
 		Key:   key,
-		Value: value,
-		TTL:   time.Duration(ttl) * time.Second,
+		Value: []byte(value),
+		TTL:   parseTTL(ttl),
 	}
 
-	setCache(c, message.Key, message.Value, message.TTL)
+	resp, err := sendSetRequest(message)
+	if err != nil {
+		fmt.Println(RedColor+"Error setting cache:", err, ResetColor)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			fmt.Println(RedColor+"Error decoding response:", err, ResetColor)
+			return
+		}
+
+		printCacheData(responseData)
+	} else {
+		fmt.Println(RedColor+"Error:", resp.Status+ResetColor)
+	}
 }
 
-func handleGetCommand(c *Cache, args []string) {
+func handleGetCommand(args []string) {
 	if len(args) != 1 {
 		fmt.Println(RedColor + "Error: Invalid GET command. Usage: GET <key>" + ResetColor)
 		return
@@ -125,10 +149,27 @@ func handleGetCommand(c *Cache, args []string) {
 		Key: key,
 	}
 
-	getCache(c, message.Key)
+	resp, err := sendGetRequest(message)
+	if err != nil {
+		fmt.Println(RedColor+"Error getting cache:", err, ResetColor)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			fmt.Println(RedColor+"Error decoding response:", err, ResetColor)
+			return
+		}
+
+		printCacheData(responseData)
+	} else {
+		fmt.Println(RedColor+"Error:", resp.Status+ResetColor)
+	}
 }
 
-func handleDeleteCommand(c *Cache, args []string) {
+func handleDeleteCommand(args []string) {
 	if len(args) != 1 {
 		fmt.Println(RedColor + "Error: Invalid DEL command. Usage: DEL <key>" + ResetColor)
 		return
@@ -136,11 +177,133 @@ func handleDeleteCommand(c *Cache, args []string) {
 
 	key := args[0]
 
-	deleteCache(c, key)
+	resp, err := sendDeleteRequest(key)
+	if err != nil {
+		fmt.Println(RedColor+"Error deleting cache:", err, ResetColor)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		fmt.Println("Cache entry deleted.")
+	} else {
+		fmt.Println(RedColor+"Error:", resp.Status+ResetColor)
+	}
 }
 
-func handleFlushAllCommand(c *Cache) {
-	flushAll(c)
+func handleFlushAllCommand() {
+	resp, err := sendFlushAllRequest()
+	if err != nil {
+		fmt.Println(RedColor+"Error flushing cache:", err, ResetColor)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		fmt.Println("Cache flushed.")
+	} else {
+		fmt.Println(RedColor+"Error:", resp.Status+ResetColor)
+	}
+}
+
+func handleShowAllCommand() {
+	resp, err := sendShowAllRequest()
+	if err != nil {
+		fmt.Println(RedColor+"Error getting cache data:", err, ResetColor)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			fmt.Println(RedColor+"Error decoding response:", err, ResetColor)
+			return
+		}
+
+		println("Response Body: ", resp.Body)
+		printCacheData(responseData)
+	} else {
+		fmt.Println(RedColor+"Error:", resp.Status+ResetColor)
+	}
+}
+
+func parseTTL(ttl string) time.Duration {
+	duration, err := strconv.Atoi(ttl)
+	if err != nil {
+		fmt.Println(RedColor + "Error: Time to Live (TTL) must be a numeric value." + ResetColor)
+		os.Exit(1)
+	}
+	return time.Duration(duration) * time.Second
+}
+
+func printCacheData(data map[string]interface{}) {
+	fmt.Println("Cache Data:")
+	for key, value := range data {
+		fmt.Printf("%s: %s\n", key, value)
+	}
+}
+
+func sendSetRequest(message MessageSet) (*http.Response, error) {
+	body, err := json.Marshal(message)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post("http://localhost:8888/cache/set", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func sendGetRequest(message MessageGet) (*http.Response, error) {
+	resp, err := http.Get(fmt.Sprintf("http://localhost:8888/cache/get?key=%s", message.Key))
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func sendDeleteRequest(key string) (*http.Response, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("http://localhost:8888/cache/delete?key=%s", key), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func sendFlushAllRequest() (*http.Response, error) {
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "http://localhost:8888/cache/reset", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func sendShowAllRequest() (*http.Response, error) {
+	resp, err := http.Get("http://localhost:8888/cache/getAll")
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func displayCommandGuide() {
@@ -157,49 +320,4 @@ func displayCommandGuide() {
 	fmt.Printf(" %-14s | %s\n", GreenColor+"HELP"+ResetColor, "Display this command guide")
 	fmt.Println("----------------------------------")
 	fmt.Println()
-}
-
-func setCache(c *Cache, key string, value []byte, duration time.Duration) {
-	if key == "" || duration == 0 {
-		fmt.Println(RedColor + "Error: Key, value, and duration are required for 'SET' command." + ResetColor)
-		os.Exit(1)
-	}
-	err := c.Set(key, []byte(value), duration)
-	if err != nil {
-		fmt.Println(RedColor+"Error setting cache:", err, ResetColor)
-	}
-}
-
-func getCache(c *Cache, key string) {
-	if key == "" {
-		fmt.Println(RedColor + "Error: Key is required for 'GET' command." + ResetColor)
-		os.Exit(1)
-	}
-	data, err := c.Get(key)
-	if err != nil {
-		fmt.Println(RedColor+"Error getting cache:", err, ResetColor)
-	} else {
-		fmt.Println("Cache value:", string(data))
-	}
-}
-
-func deleteCache(c *Cache, key string) {
-	if key == "" {
-		fmt.Println(RedColor + "Error: Key is required for 'DEL' command." + ResetColor)
-	}
-	err := c.Delete(key)
-	if err != nil {
-		fmt.Println(RedColor+"Error deleting cache:", err, ResetColor)
-	} else {
-		fmt.Println("Cache entry deleted.")
-	}
-}
-
-func flushAll(c *Cache) {
-	err := c.ResetCache()
-	if err != nil {
-		fmt.Println(RedColor+"Error flushing cache:", err, ResetColor)
-	} else {
-		fmt.Println("Cache flushed.")
-	}
 }
