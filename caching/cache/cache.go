@@ -15,17 +15,21 @@ type Cache struct {
 	aofFile      *os.File
 	aofMutex     sync.Mutex
 	replayingAOF bool
+	Size         int // Size of the cache
+	Evictions    int // Number of cache evictions
+	Hits         int // Number of cache hits
+	Misses       int // Number of cache misses
 }
 
 type Queue struct {
-	head *Node
+	Head *Node
 	tail *Node
 }
 
 type Node struct {
-	data interface{}
+	Data interface{}
 	prev *Node
-	next *Node
+	Next *Node
 }
 
 // NewCache creates a new Cache with an empty map and Queue.
@@ -50,16 +54,16 @@ func (c *Cache) PrintCache() {
 
 	// Print hash map entries
 	for key, node := range c.CacheMap {
-		fmt.Printf("  %s │ Value: %s │ Queue Position: ", key, node.data)
+		fmt.Printf("  %s │ Value: %s │ Queue Position: ", key, node.Data)
 
 		// Find the position of the node in the queue
 		position := 1
-		currentNode := c.Queue.head
+		currentNode := c.Queue.Head
 		for currentNode != nil {
 			if currentNode == node {
 				break
 			}
-			currentNode = currentNode.next
+			currentNode = currentNode.Next
 			position++
 		}
 
@@ -71,21 +75,21 @@ func (c *Cache) PrintCache() {
 	fmt.Println("╚═════════════════════════════╝")
 
 	// Print linked list (queue) entries
-	currentNode := c.Queue.head
+	currentNode := c.Queue.Head
 	for currentNode != nil {
-		fmt.Printf("  %s -> ", currentNode.data)
-		currentNode = currentNode.next
+		fmt.Printf("  %s -> ", currentNode.Data)
+		currentNode = currentNode.Next
 	}
 	fmt.Println("nil\n╚═════════════════════════════╝")
 }
 
 // AddToFront adds a new node to the front of the Queue.
 func (q *Queue) AddToFront(node *Node) {
-	node.next = q.head
-	if q.head != nil {
-		q.head.prev = node
+	node.Next = q.Head
+	if q.Head != nil {
+		q.Head.prev = node
 	}
-	q.head = node
+	q.Head = node
 	if q.tail == nil {
 		q.tail = node
 	}
@@ -112,12 +116,12 @@ func (q *Queue) RemoveNode(node *Node) {
 
 	// Remove the node from its current position
 	if nodePrev := node.prev; nodePrev != nil {
-		nodePrev.next = node.next
+		nodePrev.Next = node.Next
 	} else {
-		q.head = node.next
+		q.Head = node.Next
 	}
 
-	if nodeNext := node.next; nodeNext != nil {
+	if nodeNext := node.Next; nodeNext != nil {
 		nodeNext.prev = node.prev
 	} else {
 		q.tail = node.prev
@@ -134,9 +138,9 @@ func (q *Queue) RemoveFromEnd() *Node {
 	q.tail = q.tail.prev
 
 	if q.tail != nil {
-		q.tail.next = nil
+		q.tail.Next = nil
 	} else {
-		q.head = nil
+		q.Head = nil
 	}
 
 	return removedNode
@@ -147,13 +151,15 @@ func (c *Cache) Get(key string) ([]byte, error) {
 	node, exists := c.CacheMap[key]
 	if !exists {
 		fmt.Println(RedColor+"Key: ", key, " not found."+ResetColor)
+		c.Misses++ // Increment misses count
 		return nil, errors.New("key not found")
 	}
+	c.Hits++ // Increment hits count
 
 	// Move the accessed node to the front of the Queue
 	c.Queue.MoveToFront(node)
 
-	return node.data.([]byte), nil
+	return node.Data.([]byte), nil
 }
 
 func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
@@ -162,13 +168,13 @@ func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
 	c.mutex.Lock()
 	if exists {
 		// Update existing node
-		node.data = value
+		node.Data = value
 		c.Queue.MoveToFront(node)
 	} else {
 		// Add new node
 		newNode := &Node{
-			data: value,
-			next: c.Queue.head,
+			Data: value,
+			Next: c.Queue.Head,
 			prev: nil,
 		}
 		c.CacheMap[key] = newNode
@@ -176,6 +182,8 @@ func (c *Cache) Set(key string, value []byte, duration time.Duration) error {
 		if !c.replayingAOF {
 			c.writeToAOF("SET", key, value, duration)
 		}
+		// Increment cache size
+		c.Size++
 	}
 	c.mutex.Unlock()
 
@@ -210,6 +218,12 @@ func (c *Cache) Delete(key string) error {
 
 	c.writeToAOF("DELETE", key, nil, 0)
 
+	// Decrement cache size
+	c.Size--
+
+	// Increment evictions count
+	c.Evictions++
+
 	return nil
 }
 
@@ -219,6 +233,13 @@ func (c *Cache) ResetCache() error {
 	c.Queue = NewQueue()
 
 	c.writeToAOF("FLUSHALL", "", nil, 0)
+
+	// Reset cache statistics
+	c.Size = 0
+	c.Evictions = 0
+	c.Hits = 0
+	c.Misses = 0
+
 	return nil
 }
 
@@ -238,7 +259,7 @@ func (c *Cache) GetCacheData() map[string][]byte {
 
 	cacheData := make(map[string][]byte)
 	for key, node := range c.CacheMap {
-		cacheData[key] = node.data.([]byte)
+		cacheData[key] = node.Data.([]byte)
 	}
 	return cacheData
 }
@@ -253,8 +274,8 @@ func (c *Cache) SetCacheData(cacheData map[string][]byte) {
 
 	for key, value := range cacheData {
 		newNode := &Node{
-			data: value,
-			next: c.Queue.head,
+			Data: value,
+			Next: c.Queue.Head,
 			prev: nil,
 		}
 		c.CacheMap[key] = newNode

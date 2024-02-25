@@ -13,7 +13,7 @@ func main() {
 	//cache.HandleCli()
 
 	makeMaster := flag.Bool("master", false, "Run as master")
-	port := flag.String("port", "8080", "Port to run on")
+	port := flag.String("port", "8081", "Port to run on")
 	flag.Parse()
 
 	if *makeMaster {
